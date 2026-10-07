@@ -1,0 +1,165 @@
+html {
+  scroll-behavior: smooth;
+}
+
+:root {
+  /* App Primary Luxury Gold Colors */
+  --app-gold: #d4af37;
+  --app-gold-light: #e5c158;
+  --app-gold-border: rgba(212, 175, 55, 0.35);
+  --app-gold-bg: rgba(212, 175, 55, 0.06);
+
+  /* Social Media Authentic Brand Colors */
+  --brand-facebook: #1877f2;
+  --brand-instagram: #e1306c;
+  --brand-linkedin: #0a66c2;
+  --brand-threads: #ffffff;
+  --brand-pinterest: #e60023;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  background-color: #0e0f12;
+  color: #f5f5f7;
+  font-family: 'Montserrat', sans-serif;
+}
+
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
+/* Custom scrollbar for luxury feel */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0e0f12;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2c35;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #d4af37;
+}
+
+/* ==========================================================================
+   Footer Social Media Dynamic Buttons
+   Default: App Main Color (Gold #D4AF37)
+   Hover: Respective Platform Brand Color (FB Blue, Insta Red/Pink, etc.)
+   ========================================================================== */
+
+.footer-social-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  color: var(--app-gold) !important;
+  border: 1px solid var(--app-gold-border) !important;
+  background-color: var(--app-gold-bg) !important;
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+  position: relative !important;
+  text-decoration: none !important;
+}
+
+.footer-social-btn svg {
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), color 0.3s ease !important;
+}
+
+.footer-social-btn:hover {
+  transform: translateY(-3px) scale(1.08) !important;
+}
+
+.footer-social-btn:hover svg {
+  transform: scale(1.1) !important;
+}
+
+/* Facebook: Brand Blue */
+.footer-social-btn.facebook:hover {
+  color: var(--brand-facebook) !important;
+  border-color: var(--brand-facebook) !important;
+  background-color: rgba(24, 119, 242, 0.14) !important;
+  box-shadow: 0 0 16px rgba(24, 119, 242, 0.45) !important;
+}
+
+/* Instagram: Brand Crimson Red / Pink */
+.footer-social-btn.instagram:hover {
+  color: var(--brand-instagram) !important;
+  border-color: var(--brand-instagram) !important;
+  background-color: rgba(225, 48, 108, 0.14) !important;
+  box-shadow: 0 0 16px rgba(225, 48, 108, 0.45) !important;
+}
+
+/* LinkedIn: Brand Deep Blue */
+.footer-social-btn.linkedin:hover {
+  color: var(--brand-linkedin) !important;
+  border-color: var(--brand-linkedin) !important;
+  background-color: rgba(10, 102, 194, 0.14) !important;
+  box-shadow: 0 0 16px rgba(10, 102, 194, 0.45) !important;
+}
+
+/* Threads: Clean High-Contrast White */
+.footer-social-btn.threads:hover {
+  color: var(--brand-threads) !important;
+  border-color: rgba(255, 255, 255, 0.85) !important;
+  background-color: rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.35) !important;
+}
+
+/* Pinterest: Brand Vibrant Red */
+.footer-social-btn.pinterest:hover {
+  color: var(--brand-pinterest) !important;
+  border-color: var(--brand-pinterest) !important;
+  background-color: rgba(230, 0, 35, 0.14) !important;
+  box-shadow: 0 0 16px rgba(230, 0, 35, 0.45) !important;
+}
+
+/* ==========================================================================
+   Admin Credentials & Input Autofill Dark Theme Override
+   Overrides browser default light blue background on autofilled inputs
+   ========================================================================== */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px #16181F inset !important;
+  box-shadow: 0 0 0px 1000px #16181F inset !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  caret-color: #FFFFFF !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+}
+
+#new-password:-webkit-autofill,
+#new-password:-webkit-autofill:hover,
+#new-password:-webkit-autofill:focus,
+#new-password:-webkit-autofill:active,
+#confirm-new-password:-webkit-autofill,
+#confirm-new-password:-webkit-autofill:hover,
+#confirm-new-password:-webkit-autofill:focus,
+#confirm-new-password:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0px 1000px #16181F inset !important;
+  box-shadow: 0 0 0px 1000px #16181F inset !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  caret-color: #FFFFFF !important;
+  transition: background-color 5000s ease-in-out 0s !important;
+}
+
+/* Hide native Edge/Windows password reveal & clear buttons to avoid conflicting with custom eye icon */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
