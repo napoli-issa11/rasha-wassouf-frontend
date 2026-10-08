@@ -202,4 +202,36 @@ export const inquiryService = {
       return true;
     }
   },
+
+  /**
+   * Admin CMS: Send immediate email reply to client inquiry via Laravel backend.
+   */
+  async sendReply(payload: {
+    email: string;
+    message: string;
+    subject?: string;
+    name?: string;
+    inquiry_id?: number;
+  }): Promise<{ status: string; message: string }> {
+    const response = await axios.post(
+      `${API_BASE_URL}/admin/reply-client`,
+      payload,
+      {
+        headers: getAuthHeaders(),
+        timeout: 15000,
+      }
+    );
+
+    // If an inquiry_id was provided, update local status cache to contacted
+    if (payload.inquiry_id) {
+      const list = getStoredInquiries();
+      const index = list.findIndex((i) => i.id === payload.inquiry_id);
+      if (index !== -1) {
+        list[index].status = 'contacted';
+        persistInquiries(list);
+      }
+    }
+
+    return response.data;
+  },
 };
