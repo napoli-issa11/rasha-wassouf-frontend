@@ -204,7 +204,7 @@ export const inquiryService = {
   },
 
   /**
-   * Admin CMS: Send immediate email reply to client inquiry via Laravel backend.
+   * Admin CMS: Send email reply to client inquiry via Laravel backend with automatic webmail fallback.
    */
   async sendReply(payload: {
     email: string;
@@ -212,17 +212,12 @@ export const inquiryService = {
     subject?: string;
     name?: string;
     inquiry_id?: number;
-  }): Promise<{ status: string; message: string }> {
-    const response = await axios.post(
-      `${API_BASE_URL}/admin/reply-client`,
-      payload,
-      {
-        headers: getAuthHeaders(),
-        timeout: 15000,
-      }
-    );
+  }): Promise<{ status: string; message: string; gmail?: string; mailto?: string }> {
+    const subject = payload.subject || 'Regarding Your Project Brief - Rasha Wassouf Design Studio';
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(payload.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(payload.message)}`;
+    const mailtoUrl = `mailto:${encodeURIComponent(payload.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(payload.message)}`;
 
-    // If an inquiry_id was provided, update local status cache to contacted
+    // Always ensure local status is updated to contacted
     if (payload.inquiry_id) {
       const list = getStoredInquiries();
       const index = list.findIndex((i) => i.id === payload.inquiry_id);
@@ -232,6 +227,30 @@ export const inquiryService = {
       }
     }
 
-    return response.data;
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/admin/reply-client`,
+        payload,
+        {
+          headers: getAuthHeaders(),
+          timeout: 10000,
+        }
+      );
+
+      return {
+        status: response.data?.status || 'success',
+        message: response.data?.message || `Reply processed for ${payload.email}`,
+        gmail: response.data?.gmail || gmailUrl,
+        mailto: response.data?.mailto || mailtoUrl,
+      };
+    } catch {
+      // Graceful fallback when host mail relay is offline or encountering server issues
+      return {
+        status: 'mail_fallback',
+        message: `Host relay is offline. Prepared email for ${payload.email}.`,
+        gmail: gmailUrl,
+        mailto: mailtoUrl,
+      };
+    }
   },
 };

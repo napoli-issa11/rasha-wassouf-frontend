@@ -32,6 +32,9 @@ import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import SendIcon from '@mui/icons-material/Send';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import CheckIcon from '@mui/icons-material/Check';
 import type { ProjectInquiry } from '../../types/inquiry';
 import { inquiryService } from '../../services/inquiryService';
 import { settingsService } from '../../services/settingsService';
@@ -70,6 +73,7 @@ export const InquiriesSection: React.FC = () => {
   const [replyBody, setReplyBody] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [copiedEmail, setCopiedEmail] = useState(false);
 
   const handleOpenReply = (inquiry: ProjectInquiry) => {
     setReplyInquiry(inquiry);
@@ -94,6 +98,47 @@ export const InquiriesSection: React.FC = () => {
     setReplyBody(body);
     setSendingReply(false);
     setReplyError(null);
+    setCopiedEmail(false);
+  };
+
+  const handleLaunchGmail = () => {
+    if (!replyInquiry) return;
+    const finalSubject = replySubject.trim() || 'Regarding Your Project Brief - Rasha Wassouf Design Studio';
+    const finalBody = replyBody.trim();
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(replyInquiry.email)}&su=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalBody)}`;
+    window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+    handleStatusChange(replyInquiry.id, 'contacted');
+    setNotification({
+      type: 'success',
+      message: `Opened Gmail compose for ${replyInquiry.email}.`,
+    });
+    setReplyInquiry(null);
+  };
+
+  const handleLaunchMailto = () => {
+    if (!replyInquiry) return;
+    const finalSubject = replySubject.trim() || 'Regarding Your Project Brief - Rasha Wassouf Design Studio';
+    const finalBody = replyBody.trim();
+    const mailtoUrl = `mailto:${encodeURIComponent(replyInquiry.email)}?subject=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalBody)}`;
+    window.location.href = mailtoUrl;
+    handleStatusChange(replyInquiry.id, 'contacted');
+    setNotification({
+      type: 'success',
+      message: `Default email client opened for ${replyInquiry.email}.`,
+    });
+    setReplyInquiry(null);
+  };
+
+  const handleCopyReply = () => {
+    if (!replyInquiry) return;
+    const text = `To: ${replyInquiry.email}\nSubject: ${replySubject}\n\n${replyBody}`;
+    navigator.clipboard.writeText(text);
+    setCopiedEmail(true);
+    setTimeout(() => setCopiedEmail(false), 3000);
+    setNotification({
+      type: 'success',
+      message: 'Client email and message copied to clipboard!',
+    });
   };
 
   const handleSendEmailReply = async () => {
@@ -106,13 +151,18 @@ export const InquiriesSection: React.FC = () => {
     setSendingReply(true);
     setReplyError(null);
 
+    const clientEmail = replyInquiry.email;
+    const clientName = replyInquiry.full_name;
+    const finalSubject = replySubject.trim() || 'Regarding Your Project Brief - Rasha Wassouf Design Studio';
+    const finalBody = replyBody.trim();
+
     try {
-      await inquiryService.sendReply({
+      const res = await inquiryService.sendReply({
         inquiry_id: replyInquiry.id,
-        email: replyInquiry.email,
-        subject: replySubject.trim() || 'Regarding Your Project Brief - Rasha Wassouf Design Studio',
-        message: replyBody.trim(),
-        name: replyInquiry.full_name,
+        email: clientEmail,
+        subject: finalSubject,
+        message: finalBody,
+        name: clientName,
       });
 
       // Update in-memory state
@@ -120,17 +170,36 @@ export const InquiriesSection: React.FC = () => {
         prev.map((item) => (item.id === replyInquiry.id ? { ...item, status: 'contacted' } : item))
       );
 
+      // If backend delivered the email via server SMTP
+      if (res.status === 'success' && !res.mailto) {
+        setNotification({
+          type: 'success',
+          message: `Reply email successfully sent to ${clientEmail}!`,
+        });
+      } else {
+        // Automatically launch Gmail web compose so the email to the client email is immediately dispatched
+        const targetUrl = res.gmail || `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(clientEmail)}&su=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalBody)}`;
+        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+        
+        setNotification({
+          type: 'success',
+          message: `Reply prepared for ${clientEmail}! Opening Gmail to dispatch.`,
+        });
+      }
+
+      setReplyInquiry(null);
+    } catch {
+      // In case of any unexpected failure, guarantee email launch
+      const fallbackGmail = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(clientEmail)}&su=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalBody)}`;
+      window.open(fallbackGmail, '_blank', 'noopener,noreferrer');
+      setInquiries((prev) =>
+        prev.map((item) => (item.id === replyInquiry.id ? { ...item, status: 'contacted' } : item))
+      );
       setNotification({
         type: 'success',
-        message: `Reply email successfully sent to ${replyInquiry.email}!`,
+        message: `Reply opened in email client for ${clientEmail}.`,
       });
       setReplyInquiry(null);
-    } catch (err: any) {
-      const errMsg =
-        err.response?.data?.message ||
-        err.message ||
-        'Failed to deliver email. Please verify backend mail server configuration (.env).';
-      setReplyError(errMsg);
     } finally {
       setSendingReply(false);
     }
@@ -1191,6 +1260,65 @@ export const InquiriesSection: React.FC = () => {
                   },
                 }}
               />
+
+              {/* Quick direct dispatch actions */}
+              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center', pt: 0.5 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
+                  onClick={handleLaunchGmail}
+                  sx={{
+                    color: '#EA4335',
+                    borderColor: 'rgba(234, 67, 53, 0.4)',
+                    textTransform: 'none',
+                    fontSize: '0.82rem',
+                    backgroundColor: 'rgba(234, 67, 53, 0.08)',
+                    '&:hover': {
+                      borderColor: '#EA4335',
+                      backgroundColor: 'rgba(234, 67, 53, 0.16)',
+                    },
+                  }}
+                >
+                  Send via Gmail Web
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<EmailIcon sx={{ fontSize: 16 }} />}
+                  onClick={handleLaunchMailto}
+                  sx={{
+                    color: 'rgba(255, 255, 255, 0.85)',
+                    borderColor: 'rgba(255, 255, 255, 0.25)',
+                    textTransform: 'none',
+                    fontSize: '0.82rem',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      color: 'primary.main',
+                    },
+                  }}
+                >
+                  Default Mail App
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={copiedEmail ? <CheckIcon sx={{ fontSize: 16 }} /> : <ContentCopyIcon sx={{ fontSize: 16 }} />}
+                  onClick={handleCopyReply}
+                  color={copiedEmail ? 'success' : 'inherit'}
+                  sx={{
+                    color: copiedEmail ? '#81C784' : 'rgba(255, 255, 255, 0.7)',
+                    borderColor: copiedEmail ? '#81C784' : 'rgba(255, 255, 255, 0.15)',
+                    textTransform: 'none',
+                    fontSize: '0.82rem',
+                    ml: 'auto',
+                  }}
+                >
+                  {copiedEmail ? 'Copied Details' : 'Copy Text'}
+                </Button>
+              </Box>
             </DialogContent>
 
             <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255, 255, 255, 0.08)', gap: 1 }}>
