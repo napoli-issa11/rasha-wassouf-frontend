@@ -58,7 +58,7 @@ export const InquiriesSection: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedInquiry, setSelectedInquiry] = useState<ProjectInquiry | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
-  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'warning' | 'info'; message: string } | null>(null);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -165,41 +165,37 @@ export const InquiriesSection: React.FC = () => {
         name: clientName,
       });
 
-      // Update in-memory state
-      setInquiries((prev) =>
-        prev.map((item) => (item.id === replyInquiry.id ? { ...item, status: 'contacted' } : item))
-      );
-
-      // If backend delivered the email via server SMTP
-      if (res.status === 'success' && !res.mailto) {
+      // If backend delivered the email via live server mailer (SMTP / Resend)
+      if (res.status === 'success' && res.delivered) {
+        setInquiries((prev) =>
+          prev.map((item) => (item.id === replyInquiry.id ? { ...item, status: 'contacted' } : item))
+        );
         setNotification({
           type: 'success',
-          message: `Reply email successfully sent to ${clientEmail}!`,
+          message: `Reply email successfully delivered to ${clientEmail}!`,
         });
-      } else {
-        // Automatically launch Gmail web compose so the email to the client email is immediately dispatched
-        const targetUrl = res.gmail || `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(clientEmail)}&su=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalBody)}`;
-        window.open(targetUrl, '_blank', 'noopener,noreferrer');
-        
+        setReplyInquiry(null);
+      } else if (res.status === 'log_driver') {
+        // Backend mail driver is in log mode (MAIL_MAILER=log)
         setNotification({
-          type: 'success',
-          message: `Reply prepared for ${clientEmail}! Opening Gmail to dispatch.`,
+          type: 'warning',
+          message: `Email recorded in server log (MAIL_MAILER=${res.mailer || 'log'}). Live delivery requires configuring SMTP or Resend on Render.`,
+        });
+        setReplyError(`The server mail driver is set to '${res.mailer || 'log'}'. The email was saved to server logs, but not delivered to the client's inbox. Use 'Send via Gmail Web' or 'Default Mail App' below to send it directly.`);
+      } else {
+        // Server mail delivery failed
+        setReplyError(res.message || 'Server mail relay failed to deliver the email.');
+        setNotification({
+          type: 'error',
+          message: res.message || 'Server mail dispatch failed. Please use Gmail Web or your email app below.',
         });
       }
-
-      setReplyInquiry(null);
-    } catch {
-      // In case of any unexpected failure, guarantee email launch
-      const fallbackGmail = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(clientEmail)}&su=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalBody)}`;
-      window.open(fallbackGmail, '_blank', 'noopener,noreferrer');
-      setInquiries((prev) =>
-        prev.map((item) => (item.id === replyInquiry.id ? { ...item, status: 'contacted' } : item))
-      );
+    } catch (err: any) {
+      setReplyError(err?.message || 'A network error occurred while contacting the server.');
       setNotification({
-        type: 'success',
-        message: `Reply opened in email client for ${clientEmail}.`,
+        type: 'error',
+        message: 'Could not connect to the backend server to dispatch email.',
       });
-      setReplyInquiry(null);
     } finally {
       setSendingReply(false);
     }
@@ -320,8 +316,8 @@ export const InquiriesSection: React.FC = () => {
           onClose={() => setNotification(null)}
           sx={{
             mb: 3,
-            backgroundColor: notification.type === 'success' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(239, 83, 80, 0.15)',
-            border: `1px solid ${notification.type === 'success' ? 'rgba(76, 175, 80, 0.4)' : 'rgba(239, 83, 80, 0.4)'}`,
+            backgroundColor: notification.type === 'success' ? 'rgba(76, 175, 80, 0.15)' : notification.type === 'warning' ? 'rgba(255, 167, 38, 0.15)' : notification.type === 'info' ? 'rgba(41, 182, 246, 0.15)' : 'rgba(239, 83, 80, 0.15)',
+            border: `1px solid ${notification.type === 'success' ? 'rgba(76, 175, 80, 0.4)' : notification.type === 'warning' ? 'rgba(255, 167, 38, 0.4)' : notification.type === 'info' ? 'rgba(41, 182, 246, 0.4)' : 'rgba(239, 83, 80, 0.4)'}`,
             color: '#FFFFFF',
           }}
         >

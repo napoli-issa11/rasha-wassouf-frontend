@@ -22,7 +22,9 @@ import ReplyIcon from '@mui/icons-material/Reply';
 import SaveIcon from '@mui/icons-material/Save';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import { settingsService, INITIAL_INQUIRY_STRINGS } from '../../services/settingsService';
+import { inquiryService } from '../../services/inquiryService';
 import type { InquiryStringsSettings } from '../../types/settings';
 
 const inputFieldSx = {
@@ -61,6 +63,16 @@ export const InquirySettingsSection: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [currentTab, setCurrentTab] = useState(0);
+
+  // Email Connectivity Diagnostics State
+  const [testEmailAddress, setTestEmailAddress] = useState('');
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    status: string;
+    delivered?: boolean;
+    message: string;
+    telemetry?: any;
+  } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -130,6 +142,53 @@ export const InquirySettingsSection: React.FC = () => {
         type: 'success',
         message: 'Inquiries strings reset locally.',
       });
+    }
+  };
+
+  const handleTestEmail = async () => {
+    if (!testEmailAddress.trim()) {
+      setNotification({
+        type: 'error',
+        message: 'Please enter a recipient email address to send the diagnostic test to.',
+      });
+      return;
+    }
+
+    setTestingEmail(true);
+    setTestResult(null);
+
+    try {
+      const res = await inquiryService.testEmail(testEmailAddress.trim());
+      setTestResult(res);
+
+      if (res.status === 'success' && res.delivered) {
+        setNotification({
+          type: 'success',
+          message: res.message || 'Diagnostic test email successfully sent!',
+        });
+      } else if (res.status === 'log_driver') {
+        setNotification({
+          type: 'error',
+          message: res.message || 'MAIL_MAILER is set to log. Real inbox delivery requires configuring SMTP or Resend on Render.',
+        });
+      } else {
+        setNotification({
+          type: 'error',
+          message: res.message || 'Test email delivery failed.',
+        });
+      }
+    } catch (err: any) {
+      setTestResult({
+        status: 'error',
+        delivered: false,
+        message: err?.message || 'Failed to communicate with test email endpoint.',
+      });
+      setNotification({
+        type: 'error',
+        message: 'Server error testing email delivery.',
+      });
+    } finally {
+      setTestingEmail(false);
     }
   };
 
@@ -519,6 +578,84 @@ export const InquirySettingsSection: React.FC = () => {
               helperText="Pre-filled email body with dynamic tokens"
               sx={inputFieldSx}
             />
+
+            {/* Server Email Delivery Diagnostics Tool */}
+            <Box
+              sx={{
+                mt: 3,
+                pt: 3,
+                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <MarkEmailReadIcon sx={{ color: 'primary.main', fontSize: '1.2rem' }} />
+                <Typography variant="subtitle2" sx={{ color: 'primary.main', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  Server Email Delivery Diagnostics (Render Cloud)
+                </Typography>
+              </Box>
+              <Typography variant="body2" sx={{ color: 'rgba(255, 255, 255, 0.65)', mb: 2, fontSize: '0.82rem' }}>
+                Verify whether your Laravel backend on Render can connect to your mail driver and deliver messages to inboxes.
+              </Typography>
+
+              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: { xs: 'wrap', sm: 'nowrap' }, alignItems: 'center' }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Enter email to receive test message (e.g. director@rashawassouf.com)"
+                  value={testEmailAddress}
+                  onChange={(e) => setTestEmailAddress(e.target.value)}
+                  sx={inputFieldSx}
+                />
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  type="button"
+                  onClick={handleTestEmail}
+                  disabled={testingEmail || !testEmailAddress.trim()}
+                  startIcon={testingEmail ? <CircularProgress size={16} color="inherit" /> : <SendIcon sx={{ fontSize: 16 }} />}
+                  sx={{
+                    whiteSpace: 'nowrap',
+                    px: 2.5,
+                    py: 1,
+                    textTransform: 'none',
+                    fontWeight: 600,
+                  }}
+                >
+                  {testingEmail ? 'Testing Delivery...' : 'Send Test Email'}
+                </Button>
+              </Box>
+
+              {testResult && (
+                <Box sx={{ mt: 2 }}>
+                  <Alert
+                    severity={testResult.status === 'success' && testResult.delivered ? 'success' : testResult.status === 'log_driver' ? 'warning' : 'error'}
+                    sx={{
+                      fontSize: '0.85rem',
+                      borderRadius: 1.5,
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      {testResult.message}
+                    </Typography>
+                    {testResult.status === 'log_driver' && (
+                      <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+                        The server mail driver is set to <strong>log</strong>. In production on Render, set <strong>MAIL_MAILER=smtp</strong> (or <strong>resend</strong>) and configure your credentials under your Render service Environment Variables.
+                      </Typography>
+                    )}
+                    {testResult.telemetry && (
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                        <Chip size="small" label={`Mailer: ${testResult.telemetry.mailer || 'N/A'}`} sx={{ fontSize: '0.72rem' }} />
+                        {testResult.telemetry.host && <Chip size="small" label={`Host: ${testResult.telemetry.host}`} sx={{ fontSize: '0.72rem' }} />}
+                        {testResult.telemetry.port && <Chip size="small" label={`Port: ${testResult.telemetry.port}`} sx={{ fontSize: '0.72rem' }} />}
+                        {testResult.telemetry.scheme && <Chip size="small" label={`Scheme: ${testResult.telemetry.scheme}`} sx={{ fontSize: '0.72rem' }} />}
+                        {testResult.telemetry.resend_configured !== undefined && <Chip size="small" label={`Resend Key: ${testResult.telemetry.resend_configured ? 'Present' : 'Not Set'}`} sx={{ fontSize: '0.72rem' }} />}
+                        {testResult.telemetry.from_address && <Chip size="small" label={`From: ${testResult.telemetry.from_address}`} sx={{ fontSize: '0.72rem' }} />}
+                      </Box>
+                    )}
+                  </Alert>
+                </Box>
+              )}
+            </Box>
           </Box>
         )}
       </Card>

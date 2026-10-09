@@ -204,7 +204,7 @@ export const inquiryService = {
   },
 
   /**
-   * Admin CMS: Send email reply to client inquiry via Laravel backend with automatic webmail fallback.
+   * Admin CMS: Send email reply to client inquiry via Laravel backend.
    */
   async sendReply(payload: {
     email: string;
@@ -212,7 +212,14 @@ export const inquiryService = {
     subject?: string;
     name?: string;
     inquiry_id?: number;
-  }): Promise<{ status: string; message: string; gmail?: string; mailto?: string }> {
+  }): Promise<{
+    status: string;
+    delivered?: boolean;
+    mailer?: string;
+    message: string;
+    gmail?: string;
+    mailto?: string;
+  }> {
     const subject = payload.subject || 'Regarding Your Project Brief - Rasha Wassouf Design Studio';
     const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(payload.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(payload.message)}`;
     const mailtoUrl = `mailto:${encodeURIComponent(payload.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(payload.message)}`;
@@ -233,23 +240,65 @@ export const inquiryService = {
         payload,
         {
           headers: getAuthHeaders(),
-          timeout: 10000,
+          timeout: 20000,
         }
       );
 
       return {
         status: response.data?.status || 'success',
+        delivered: response.data?.delivered ?? true,
+        mailer: response.data?.mailer,
         message: response.data?.message || `Reply processed for ${payload.email}`,
         gmail: response.data?.gmail || gmailUrl,
         mailto: response.data?.mailto || mailtoUrl,
       };
-    } catch {
-      // Graceful fallback when host mail relay is offline or encountering server issues
+    } catch (err: any) {
+      const respData = err?.response?.data;
       return {
-        status: 'mail_fallback',
-        message: `Host relay is offline. Prepared email for ${payload.email}.`,
-        gmail: gmailUrl,
-        mailto: mailtoUrl,
+        status: respData?.status || 'error',
+        delivered: false,
+        mailer: respData?.mailer,
+        message: respData?.message || err?.message || `Host mail relay failed to dispatch email.`,
+        gmail: respData?.gmail || gmailUrl,
+        mailto: respData?.mailto || mailtoUrl,
+      };
+    }
+  },
+
+  /**
+   * Admin CMS: Run an immediate diagnostic test on server email connectivity.
+   */
+  async testEmail(email: string): Promise<{
+    status: string;
+    delivered?: boolean;
+    message: string;
+    telemetry?: {
+      mailer?: string;
+      host?: string;
+      port?: number;
+      scheme?: string;
+      username_configured?: boolean;
+      resend_configured?: boolean;
+      from_address?: string;
+      from_name?: string;
+    };
+  }> {
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/admin/test-email`,
+        { email },
+        {
+          headers: getAuthHeaders(),
+          timeout: 20000,
+        }
+      );
+      return response.data;
+    } catch (err: any) {
+      return {
+        status: 'error',
+        delivered: false,
+        message: err?.response?.data?.message || err?.message || 'Test email failed to send.',
+        telemetry: err?.response?.data?.telemetry,
       };
     }
   },
