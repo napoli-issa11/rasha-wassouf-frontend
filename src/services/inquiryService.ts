@@ -219,6 +219,7 @@ export const inquiryService = {
     message: string;
     gmail?: string;
     mailto?: string;
+    is_demo_mode?: boolean;
   }> {
     const subject = payload.subject || 'Regarding Your Project Brief - Rasha Wassouf Design Studio';
     const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(payload.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(payload.message)}`;
@@ -251,6 +252,7 @@ export const inquiryService = {
         message: response.data?.message || `Reply processed for ${payload.email}`,
         gmail: response.data?.gmail || gmailUrl,
         mailto: response.data?.mailto || mailtoUrl,
+        is_demo_mode: response.data?.is_demo_mode,
       };
     } catch (err: any) {
       const respData = err?.response?.data;

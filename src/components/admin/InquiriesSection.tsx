@@ -165,14 +165,16 @@ export const InquiriesSection: React.FC = () => {
         name: clientName,
       });
 
-      // If backend delivered the email via live server mailer (SMTP / Resend)
+      // If backend delivered the email via live server mailer (Mailtrap / SMTP / Resend)
       if (res.status === 'success' && res.delivered) {
         setInquiries((prev) =>
           prev.map((item) => (item.id === replyInquiry.id ? { ...item, status: 'contacted' } : item))
         );
         setNotification({
-          type: 'success',
-          message: `Reply email successfully delivered to ${clientEmail}!`,
+          type: res.is_demo_mode ? 'info' : 'success',
+          message: res.message || (res.is_demo_mode
+            ? `Reply dispatched in Mailtrap Demo Sandbox mode to admin for ${clientEmail}.`
+            : `Reply email successfully delivered to ${clientEmail}!`),
         });
         setReplyInquiry(null);
       } else if (res.status === 'log_driver') {
