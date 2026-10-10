@@ -32,7 +32,6 @@ import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import SendIcon from '@mui/icons-material/Send';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckIcon from '@mui/icons-material/Check';
 import type { ProjectInquiry } from '../../types/inquiry';
@@ -101,33 +100,6 @@ export const InquiriesSection: React.FC = () => {
     setCopiedEmail(false);
   };
 
-  const handleLaunchGmail = () => {
-    if (!replyInquiry) return;
-    const finalSubject = replySubject.trim() || 'Regarding Your Project Brief - Rasha Wassouf Design Studio';
-    const finalBody = replyBody.trim();
-    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(replyInquiry.email)}&su=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalBody)}`;
-    window.open(gmailUrl, '_blank', 'noopener,noreferrer');
-    handleStatusChange(replyInquiry.id, 'contacted');
-    setNotification({
-      type: 'success',
-      message: `Opened Gmail compose for ${replyInquiry.email}.`,
-    });
-    setReplyInquiry(null);
-  };
-
-  const handleLaunchMailto = () => {
-    if (!replyInquiry) return;
-    const finalSubject = replySubject.trim() || 'Regarding Your Project Brief - Rasha Wassouf Design Studio';
-    const finalBody = replyBody.trim();
-    const mailtoUrl = `mailto:${encodeURIComponent(replyInquiry.email)}?subject=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalBody)}`;
-    window.location.href = mailtoUrl;
-    handleStatusChange(replyInquiry.id, 'contacted');
-    setNotification({
-      type: 'success',
-      message: `Default email client opened for ${replyInquiry.email}.`,
-    });
-    setReplyInquiry(null);
-  };
 
   const handleCopyReply = () => {
     if (!replyInquiry) return;
@@ -716,22 +688,63 @@ export const InquiriesSection: React.FC = () => {
                         >
                           MESSAGE:
                         </Box>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color: 'rgba(255, 255, 255, 0.75)',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            display: { xs: '-webkit-box', md: 'block' },
-                            WebkitLineClamp: { xs: 3, md: 1 },
-                            WebkitBoxOrient: 'vertical',
-                            whiteSpace: { xs: 'normal', md: 'nowrap' },
-                            fontSize: '0.82rem',
-                            lineHeight: 1.5,
-                          }}
-                        >
-                          {inquiry.project_vision}
-                        </Typography>
+                        {(() => {
+                          const candidateValues = [
+                            inquiry.project_vision,
+                            (inquiry as any).message,
+                            (inquiry as any).vision,
+                            (inquiry as any).projectVision,
+                            (inquiry as any).spatial_requirements,
+                            (inquiry as any).spatialRequirements,
+                            (inquiry as any).project_brief,
+                            (inquiry as any).brief,
+                            (inquiry as any).project_description,
+                            (inquiry as any).projectDescription,
+                            (inquiry as any).content,
+                            (inquiry as any).description,
+                            (inquiry as any).notes,
+                            (inquiry as any).body,
+                            (inquiry as any).details,
+                            (inquiry as any).text,
+                            (inquiry as any).comment,
+                            (inquiry as any).inquiry_message,
+                            (inquiry as any).payload?.project_vision,
+                            (inquiry as any).payload?.message,
+                            (inquiry as any).data?.project_vision,
+                            (inquiry as any).data?.message,
+                          ];
+
+                          let visionDisplay = '';
+                          for (const val of candidateValues) {
+                            if (typeof val === 'string' && val.trim().length > 0) {
+                              visionDisplay = val.trim();
+                              break;
+                            } else if (val !== null && val !== undefined && typeof val !== 'object' && String(val).trim().length > 0) {
+                              visionDisplay = String(val).trim();
+                              break;
+                            }
+                          }
+
+                          return (
+                            <Typography
+                              variant="body2"
+                              title={visionDisplay || undefined}
+                              sx={{
+                                color: visionDisplay ? 'rgba(255, 255, 255, 0.75)' : 'rgba(255, 255, 255, 0.35)',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: { xs: '-webkit-box', md: 'block' },
+                                WebkitLineClamp: { xs: 3, md: 1 },
+                                WebkitBoxOrient: 'vertical',
+                                whiteSpace: { xs: 'normal', md: 'nowrap' },
+                                fontSize: '0.82rem',
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {visionDisplay || '—'}
+                            </Typography>
+                          );
+                        })()}
                       </TableCell>
 
                       {/* 4. Status */}
@@ -1238,84 +1251,58 @@ export const InquiriesSection: React.FC = () => {
                 }}
               />
 
-              {/* Body Field */}
-              <TextField
-                label="Message Body"
-                fullWidth
-                multiline
-                rows={7}
-                value={replyBody}
-                onChange={(e) => setReplyBody(e.target.value)}
-                sx={{
-                  '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.7)' },
-                  '& .MuiOutlinedInput-root': {
-                    backgroundColor: '#16181F',
-                    color: '#FFFFFF',
-                    fontSize: '0.9rem',
-                    lineHeight: 1.6,
-                    '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.15)' },
-                    '&:hover fieldset': { borderColor: 'primary.main' },
-                  },
-                }}
-              />
-
-              {/* Quick direct dispatch actions */}
-              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center', pt: 0.5 }}>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
-                  onClick={handleLaunchGmail}
+              {/* Body Field with integrated top-right copy icon */}
+              <Box sx={{ position: 'relative' }}>
+                <TextField
+                  label="Message Body"
+                  fullWidth
+                  multiline
+                  rows={7}
+                  value={replyBody}
+                  onChange={(e) => setReplyBody(e.target.value)}
                   sx={{
-                    color: '#EA4335',
-                    borderColor: 'rgba(234, 67, 53, 0.4)',
-                    textTransform: 'none',
-                    fontSize: '0.82rem',
-                    backgroundColor: 'rgba(234, 67, 53, 0.08)',
-                    '&:hover': {
-                      borderColor: '#EA4335',
-                      backgroundColor: 'rgba(234, 67, 53, 0.16)',
+                    '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.7)' },
+                    '& .MuiOutlinedInput-root': {
+                      backgroundColor: '#16181F',
+                      color: '#FFFFFF',
+                      fontSize: '0.9rem',
+                      lineHeight: 1.6,
+                      '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.15)' },
+                      '&:hover fieldset': { borderColor: 'primary.main' },
+                      '& textarea': {
+                        pr: 6.5,
+                      },
                     },
                   }}
-                >
-                  Send via Gmail Web
-                </Button>
-
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<EmailIcon sx={{ fontSize: 16 }} />}
-                  onClick={handleLaunchMailto}
-                  sx={{
-                    color: 'rgba(255, 255, 255, 0.85)',
-                    borderColor: 'rgba(255, 255, 255, 0.25)',
-                    textTransform: 'none',
-                    fontSize: '0.82rem',
-                    '&:hover': {
-                      borderColor: 'primary.main',
-                      color: 'primary.main',
-                    },
-                  }}
-                >
-                  Default Mail App
-                </Button>
-
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={copiedEmail ? <CheckIcon sx={{ fontSize: 16 }} /> : <ContentCopyIcon sx={{ fontSize: 16 }} />}
-                  onClick={handleCopyReply}
-                  color={copiedEmail ? 'success' : 'inherit'}
-                  sx={{
-                    color: copiedEmail ? '#81C784' : 'rgba(255, 255, 255, 0.7)',
-                    borderColor: copiedEmail ? '#81C784' : 'rgba(255, 255, 255, 0.15)',
-                    textTransform: 'none',
-                    fontSize: '0.82rem',
-                    ml: 'auto',
-                  }}
-                >
-                  {copiedEmail ? 'Copied Details' : 'Copy Text'}
-                </Button>
+                />
+                <Tooltip title={copiedEmail ? 'Copied to clipboard!' : 'Copy text'}>
+                  <IconButton
+                    size="small"
+                    onClick={handleCopyReply}
+                    aria-label="Copy reply text"
+                    sx={{
+                      position: 'absolute',
+                      top: 8,
+                      right: 8,
+                      mr: '20px',
+                      color: copiedEmail ? '#81C784' : 'rgba(255, 255, 255, 0.65)',
+                      backgroundColor: copiedEmail ? 'rgba(129, 199, 132, 0.14)' : 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid',
+                      borderColor: copiedEmail ? 'rgba(129, 199, 132, 0.4)' : 'rgba(255, 255, 255, 0.12)',
+                      borderRadius: 1.5,
+                      p: 0.6,
+                      zIndex: 2,
+                      transition: 'all 0.2s ease',
+                      '&:hover': {
+                        color: copiedEmail ? '#81C784' : 'primary.main',
+                        backgroundColor: copiedEmail ? 'rgba(129, 199, 132, 0.22)' : 'rgba(212, 175, 55, 0.12)',
+                        borderColor: copiedEmail ? '#81C784' : 'primary.main',
+                      },
+                    }}
+                  >
+                    {copiedEmail ? <CheckIcon sx={{ fontSize: 17 }} /> : <ContentCopyIcon sx={{ fontSize: 17 }} />}
+                  </IconButton>
+                </Tooltip>
               </Box>
             </DialogContent>
 
