@@ -28,7 +28,15 @@ export const authService = {
     if (!session) return null;
     try {
       const parsed = JSON.parse(session);
-      return parsed && typeof parsed === 'object' ? parsed : null;
+      if (parsed && typeof parsed === 'object') {
+        // Automatically invalidate legacy offline/mock tokens so user gets authentic Sanctum session
+        if (typeof parsed.token === 'string' && parsed.token.startsWith('admin_token_')) {
+          localStorage.removeItem(AUTH_STORAGE_KEY);
+          return null;
+        }
+        return parsed;
+      }
+      return null;
     } catch {
       return null;
     }

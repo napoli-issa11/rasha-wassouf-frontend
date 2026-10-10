@@ -21,7 +21,7 @@ export const getAuthHeaders = (): Record<string, string> => {
     const session = localStorage.getItem('rasha_admin_session');
     if (session) {
       const parsed = JSON.parse(session);
-      if (parsed?.token) {
+      if (parsed?.token && typeof parsed.token === 'string' && !parsed.token.startsWith('admin_token_')) {
         return {
           Authorization: `Bearer ${parsed.token}`,
           Accept: 'application/json',
