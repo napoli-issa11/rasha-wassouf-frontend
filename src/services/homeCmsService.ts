@@ -1,8 +1,20 @@
 import axios from 'axios';
 import type { HomeSlide } from '../types/project';
 import { settingsService } from './settingsService';
+import { authService } from './authService';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+const getAuthHeaders = () => {
+  const user = authService.getCurrentUser();
+  if (user?.token) {
+    return {
+      Authorization: `Bearer ${user.token}`,
+      Accept: 'application/json',
+    };
+  }
+  return { Accept: 'application/json' };
+};
 const SLIDES_STORAGE_KEY = 'rasha_home_slides_v2';
 const ROTATION_SPEED_KEY = 'rasha_hero_rotation_speed_v1';
 const DEFAULT_ROTATION_SPEED = 3;
@@ -176,7 +188,9 @@ export const homeCmsService = {
     persistSlides(list);
 
     try {
-      await axios.put(`${API_BASE_URL}/home-slides/${id}`, updated);
+      await axios.put(`${API_BASE_URL}/home-slides/${id}`, updated, {
+        headers: getAuthHeaders(),
+      });
     } catch {
       // Local sync handled
     }
@@ -193,7 +207,9 @@ export const homeCmsService = {
     persistSlides(list);
 
     try {
-      await axios.post(`${API_BASE_URL}/home-slides`, newSlide);
+      await axios.post(`${API_BASE_URL}/home-slides`, newSlide, {
+        headers: getAuthHeaders(),
+      });
     } catch {
       // Local sync handled
     }
@@ -205,7 +221,9 @@ export const homeCmsService = {
     persistSlides(list);
 
     try {
-      await axios.delete(`${API_BASE_URL}/home-slides/${id}`);
+      await axios.delete(`${API_BASE_URL}/home-slides/${id}`, {
+        headers: getAuthHeaders(),
+      });
     } catch {
       // Local sync handled
     }

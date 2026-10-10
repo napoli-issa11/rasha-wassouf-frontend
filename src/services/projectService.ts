@@ -1,7 +1,37 @@
 import axios from 'axios';
 import type { Project, ProjectFormData, ProjectComment } from '../types/project';
+import { authService } from './authService';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+/**
+ * Retrieve authorization headers with Sanctum Bearer token for protected requests.
+ */
+export const getAuthHeaders = (): Record<string, string> => {
+  const user = authService.getCurrentUser();
+  if (user?.token) {
+    return {
+      Authorization: `Bearer ${user.token}`,
+      Accept: 'application/json',
+    };
+  }
+
+  // Fallback direct check for stored session
+  try {
+    const session = localStorage.getItem('rasha_admin_session');
+    if (session) {
+      const parsed = JSON.parse(session);
+      if (parsed?.token) {
+        return {
+          Authorization: `Bearer ${parsed.token}`,
+          Accept: 'application/json',
+        };
+      }
+    }
+  } catch {}
+
+  return { Accept: 'application/json' };
+};
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -12,14 +42,15 @@ const api = axios.create({
 
 // Attach bearer token for protected routes automatically
 api.interceptors.request.use((config) => {
-  const session = localStorage.getItem('rasha_admin_session');
-  if (session) {
-    try {
-      const user = JSON.parse(session);
-      if (user?.token) {
-        config.headers.Authorization = `Bearer ${user.token}`;
-      }
-    } catch {}
+  const authHeaders = getAuthHeaders();
+  if (authHeaders.Authorization) {
+    if (config.headers && typeof (config.headers as any).set === 'function') {
+      (config.headers as any).set('Authorization', authHeaders.Authorization);
+    } else if (config.headers) {
+      (config.headers as any)['Authorization'] = authHeaders.Authorization;
+    } else {
+      config.headers = { ...authHeaders } as any;
+    }
   }
   return config;
 });
@@ -471,7 +502,10 @@ export const projectService = {
   // Get all pending comments across all projects for Admin Moderation
   async getPendingComments(): Promise<ProjectComment[]> {
     try {
-      const response = await api.get('/admin/comments/pending', { timeout: 10000 });
+      const response = await api.get('/admin/comments/pending', {
+        headers: getAuthHeaders(),
+        timeout: 10000,
+      });
       if (Array.isArray(response.data)) {
         return response.data;
       }
@@ -495,7 +529,14 @@ export const projectService = {
   async approveComment(commentId: string): Promise<boolean> {
     let success = false;
     try {
-      const response = await api.patch(`/admin/comments/${commentId}/approve`, {}, { timeout: 10000 });
+      const response = await api.patch(
+        `/admin/comments/${commentId}/approve`,
+        {},
+        {
+          headers: getAuthHeaders(),
+          timeout: 10000,
+        }
+      );
       if (response.status === 200 || response.data) {
         success = true;
       }
@@ -529,7 +570,10 @@ export const projectService = {
   async deleteComment(commentId: string): Promise<boolean> {
     let success = false;
     try {
-      const response = await api.delete(`/admin/comments/${commentId}`, { timeout: 10000 });
+      const response = await api.delete(`/admin/comments/${commentId}`, {
+        headers: getAuthHeaders(),
+        timeout: 10000,
+      });
       if (response.status === 200 || response.data) {
         success = true;
       }
@@ -564,11 +608,14 @@ export const projectService = {
     formData.append('coverImage', file);
     formData.append('folder', folder);
 
+    const authHeaders = getAuthHeaders();
+
     const response = await api.post('/projects/upload', formData, {
       headers: {
+        ...authHeaders,
         'Content-Type': 'multipart/form-data',
       },
-      timeout: 30000,
+      timeout: 45000,
     });
 
     const url = response.data?.secure_url || response.data?.url;
@@ -624,9 +671,10 @@ export const projectService = {
     try {
       const response = await api.post('/projects', formData, {
         headers: {
+          ...getAuthHeaders(),
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 30000,
+        timeout: 45000,
       });
 
       const serverData = response.data?.data || response.data;
@@ -714,9 +762,10 @@ export const projectService = {
       try {
         const response = await api.post(`/projects/${id}`, formData, {
           headers: {
+            ...getAuthHeaders(),
             'Content-Type': 'multipart/form-data',
           },
-          timeout: 30000,
+          timeout: 45000,
         });
 
         const serverData = response.data?.data || response.data;
@@ -751,7 +800,9 @@ export const projectService = {
       };
 
       try {
-        const response = await api.put(`/projects/${id}`, cleanData);
+        const response = await api.put(`/projects/${id}`, cleanData, {
+          headers: getAuthHeaders(),
+        });
         const serverData = response.data?.data || response.data;
         if (serverData && serverData.id) {
           const updated: Project = {
@@ -790,7 +841,9 @@ export const projectService = {
     persistProjects(list);
 
     try {
-      await api.delete(`/projects/${id}`);
+      await api.delete(`/projects/${id}`, {
+        headers: getAuthHeaders(),
+      });
     } catch {
       // Local sync handled
     }
