@@ -24,16 +24,28 @@ export const authService = {
   },
 
   getCurrentUser(): AdminUser | null {
-    const session = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!session) return null;
+    const session =
+      localStorage.getItem(AUTH_STORAGE_KEY) ||
+      (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(AUTH_STORAGE_KEY) : null);
+    if (!session) {
+      // Fallback check for standalone token keys
+      const fallbackToken =
+        localStorage.getItem('token') ||
+        localStorage.getItem('auth_token') ||
+        localStorage.getItem('sanctum_token');
+      if (fallbackToken && typeof fallbackToken === 'string') {
+        return {
+          id: 1,
+          name: 'Admin',
+          email: 'admin@rashawassouf.com',
+          token: fallbackToken.replace(/^Bearer\s+/i, '').trim(),
+        };
+      }
+      return null;
+    }
     try {
       const parsed = JSON.parse(session);
-      if (parsed && typeof parsed === 'object') {
-        // Automatically invalidate legacy offline/mock tokens so user gets authentic Sanctum session
-        if (typeof parsed.token === 'string' && parsed.token.startsWith('admin_token_')) {
-          localStorage.removeItem(AUTH_STORAGE_KEY);
-          return null;
-        }
+      if (parsed && typeof parsed === 'object' && parsed.token) {
         return parsed;
       }
       return null;
@@ -67,11 +79,25 @@ export const authService = {
 
   getAuthHeader(): Record<string, string> {
     const user = this.getCurrentUser();
-    if (user?.token) {
-      return {
-        Authorization: `Bearer ${user.token}`,
-        Accept: 'application/json',
-      };
+    let token = user?.token;
+
+    if (!token) {
+      token =
+        localStorage.getItem('token') ||
+        localStorage.getItem('auth_token') ||
+        localStorage.getItem('sanctum_token') ||
+        localStorage.getItem('access_token') ||
+        '';
+    }
+
+    if (token && typeof token === 'string' && token.trim()) {
+      const cleanToken = token.replace(/^Bearer\s+/i, '').trim();
+      if (cleanToken) {
+        return {
+          Authorization: `Bearer ${cleanToken}`,
+          Accept: 'application/json',
+        };
+      }
     }
     return { Accept: 'application/json' };
   },

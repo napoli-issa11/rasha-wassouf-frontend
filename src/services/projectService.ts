@@ -8,27 +8,77 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
  * Retrieve authorization headers with Sanctum Bearer token for protected requests.
  */
 export const getAuthHeaders = (): Record<string, string> => {
-  const user = authService.getCurrentUser();
-  if (user?.token) {
-    return {
-      Authorization: `Bearer ${user.token}`,
-      Accept: 'application/json',
-    };
-  }
+  let token = '';
 
-  // Fallback direct check for stored session
   try {
-    const session = localStorage.getItem('rasha_admin_session');
-    if (session) {
-      const parsed = JSON.parse(session);
-      if (parsed?.token && typeof parsed.token === 'string' && !parsed.token.startsWith('admin_token_')) {
-        return {
-          Authorization: `Bearer ${parsed.token}`,
-          Accept: 'application/json',
-        };
-      }
+    const authH = authService.getAuthHeader();
+    if (authH?.Authorization) {
+      token = authH.Authorization.replace(/^Bearer\s+/i, '').trim();
     }
   } catch {}
+
+  if (!token) {
+    try {
+      const user = authService.getCurrentUser();
+      if (user?.token && typeof user.token === 'string' && user.token.trim()) {
+        token = user.token;
+      }
+    } catch {}
+  }
+
+  if (!token) {
+    const storages = [
+      typeof localStorage !== 'undefined' ? localStorage : null,
+      typeof sessionStorage !== 'undefined' ? sessionStorage : null,
+    ];
+
+    for (const storage of storages) {
+      if (!storage || token) continue;
+
+      // 1. Session object check
+      try {
+        const session = storage.getItem('rasha_admin_session');
+        if (session) {
+          const parsed = JSON.parse(session);
+          if (parsed?.token && typeof parsed.token === 'string' && parsed.token.trim()) {
+            token = parsed.token;
+            break;
+          }
+        }
+      } catch {}
+
+      // 2. Direct token keys
+      const keys = ['token', 'auth_token', 'sanctum_token', 'access_token', 'admin_token', 'rasha_token', 'bearer_token'];
+      for (const k of keys) {
+        try {
+          const val = storage.getItem(k);
+          if (val && typeof val === 'string' && val.trim()) {
+            if (val.startsWith('{')) {
+              const parsed = JSON.parse(val);
+              const t = parsed.token || parsed.access_token || parsed.sanctum_token;
+              if (t && typeof t === 'string' && t.trim()) {
+                token = t;
+                break;
+              }
+            } else {
+              token = val;
+              break;
+            }
+          }
+        } catch {}
+      }
+    }
+  }
+
+  if (token && typeof token === 'string' && token.trim()) {
+    const cleanToken = token.replace(/^Bearer\s+/i, '').trim();
+    if (cleanToken) {
+      return {
+        Authorization: `Bearer ${cleanToken}`,
+        Accept: 'application/json',
+      };
+    }
+  }
 
   return { Accept: 'application/json' };
 };
@@ -42,14 +92,20 @@ const api = axios.create({
 
 // Attach bearer token for protected routes automatically
 api.interceptors.request.use((config) => {
-  const authHeaders = getAuthHeaders();
-  if (authHeaders.Authorization) {
-    if (config.headers && typeof (config.headers as any).set === 'function') {
-      (config.headers as any).set('Authorization', authHeaders.Authorization);
-    } else if (config.headers) {
-      (config.headers as any)['Authorization'] = authHeaders.Authorization;
-    } else {
-      config.headers = { ...authHeaders } as any;
+  const existingAuth = (config.headers as any)?.get
+    ? (config.headers as any).get('Authorization')
+    : (config.headers as any)?.Authorization || (config.headers as any)?.authorization;
+
+  if (!existingAuth) {
+    const authHeaders = getAuthHeaders();
+    if (authHeaders.Authorization) {
+      if (config.headers && typeof (config.headers as any).set === 'function') {
+        (config.headers as any).set('Authorization', authHeaders.Authorization);
+      } else if (config.headers) {
+        (config.headers as any)['Authorization'] = authHeaders.Authorization;
+      } else {
+        config.headers = { ...authHeaders } as any;
+      }
     }
   }
   return config;
@@ -601,7 +657,12 @@ export const projectService = {
   },
 
   // Upload image directly to Cloudinary CDN
-  async uploadImage(file: File, folder: string = 'rasha_portfolio/projects'): Promise<{ url: string; secure_url: string }> {
+  // Upload image directly to Cloudinary CDN
+  async uploadImage(
+    file: File,
+    folder: string = 'rasha_portfolio/projects',
+    customToken?: string
+  ): Promise<{ url: string; secure_url: string }> {
     const formData = new FormData();
     formData.append('image', file);
     formData.append('file', file);
@@ -609,6 +670,12 @@ export const projectService = {
     formData.append('folder', folder);
 
     const authHeaders = getAuthHeaders();
+    if (customToken && typeof customToken === 'string') {
+      const cleanToken = customToken.replace(/^Bearer\s+/i, '').trim();
+      if (cleanToken) {
+        authHeaders.Authorization = `Bearer ${cleanToken}`;
+      }
+    }
 
     const response = await api.post('/projects/upload', formData, {
       headers: {

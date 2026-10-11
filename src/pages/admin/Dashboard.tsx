@@ -69,7 +69,7 @@ export interface ProjectImageItem {
   name?: string;
 }
 import type { AboutContent, AboutStatistic, AboutPillar } from '../../types/about';
-import { projectService } from '../../services/projectService';
+import { projectService, getAuthHeaders } from '../../services/projectService';
 import { homeCmsService } from '../../services/homeCmsService';
 import { aboutService, INITIAL_ABOUT_CONTENT } from '../../services/aboutService';
 import { authService } from '../../services/authService';
@@ -192,6 +192,11 @@ export const Dashboard: React.FC = () => {
     title: '',
     description: '',
   });
+  const [isUploadingSlideImage, setIsUploadingSlideImage] = useState(false);
+  const [slideUploadProgressText, setSlideUploadProgressText] = useState('');
+  const [isDraggingSlidePhoto, setIsDraggingSlidePhoto] = useState(false);
+  const [uploadedSlideImages, setUploadedSlideImages] = useState<string[]>([]);
+  const [slideImageFile, setSlideImageFile] = useState<File | null>(null);
 
   // Delete Confirm Dialog
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -688,24 +693,171 @@ export const Dashboard: React.FC = () => {
   ========================================================= */
   const handleOpenAddSlide = () => {
     setEditingSlide(null);
+    setSlideImageFile(null);
     setSlideForm({
       image: '/home-imgs/home1.webp',
       subtitle: 'NEW ARCHITECTURAL HORIZON',
       title: 'Bespoke Structure & Spatial Elegance',
       description: 'Crafted with monolithic concrete and natural stone to foster human connection and harmony.',
     });
+    setUploadedSlideImages([]);
     setSlideDialogOpen(true);
   };
 
   const handleOpenEditSlide = (slide: HomeSlide) => {
     setEditingSlide(slide);
+    setSlideImageFile(null);
     setSlideForm({
       image: slide.image,
       subtitle: slide.subtitle,
       title: slide.title,
       description: slide.description,
     });
+    setUploadedSlideImages(slide.image ? [slide.image] : []);
     setSlideDialogOpen(true);
+  };
+
+  // Upload single file for hero slide directly to Cloudinary
+  const handleUploadSingleSlidePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      e.target.value = '';
+      await handleUploadSlideFile(file);
+    }
+  };
+
+  // Upload multiple files for hero slide directly to Cloudinary
+  const handleUploadMultipleSlidePhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files).filter((f) => f.type.startsWith('image/'));
+      e.target.value = '';
+      if (files.length === 0) {
+        showSnackbar('Please select valid image files (WEBP, JPG, PNG).', 'error');
+        return;
+      }
+      await handleUploadMultipleSlideFiles(files);
+    }
+  };
+
+  const handleUploadSlideFile = async (file: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showSnackbar('Please select a valid image file (e.g. JPG, PNG, WEBP).', 'error');
+      return;
+    }
+
+    // Instantly provide local preview so the admin immediately sees the image
+    const localPreviewUrl = URL.createObjectURL(file);
+    setSlideForm((prev) => ({ ...prev, image: localPreviewUrl }));
+    setSlideImageFile(file);
+
+    setIsUploadingSlideImage(true);
+    setSlideUploadProgressText(`Uploading ${file.name} to Cloudinary...`);
+    try {
+      const authHeader = authService.getAuthHeader();
+      const storedHeaders = getAuthHeaders();
+      const activeToken =
+        authService.getCurrentUser()?.token ||
+        currentUser?.token ||
+        authHeader.Authorization ||
+        storedHeaders.Authorization;
+
+      const uploadRes = await projectService.uploadImage(file, 'rasha_portfolio/hero', activeToken);
+      const secureUrl = uploadRes.secure_url || uploadRes.url;
+      if (!secureUrl) {
+        throw new Error('No secure URL returned from Cloudinary');
+      }
+      setSlideForm((prev) => ({ ...prev, image: secureUrl }));
+      setSlideImageFile(null);
+      setUploadedSlideImages((prev) => [...new Set([...prev.filter((u) => !u.startsWith('blob:')), secureUrl])]);
+      showSnackbar('Hero slide image uploaded to Cloudinary successfully!', 'success');
+    } catch (err: any) {
+      console.error('Error uploading slide image to Cloudinary:', err);
+      const msg =
+        err?.response?.status === 401
+          ? 'Authentication error: Sanctum session token missing or expired. Please re-login to upload images.'
+          : err?.response?.data?.message || err?.message || 'Error uploading image to Cloudinary.';
+      showSnackbar(msg, 'error');
+    } finally {
+      setIsUploadingSlideImage(false);
+      setSlideUploadProgressText('');
+    }
+  };
+
+  const handleUploadMultipleSlideFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+
+    // Instantly provide local preview for the first image
+    const firstLocalPreview = URL.createObjectURL(files[0]);
+    setSlideForm((prev) => ({ ...prev, image: firstLocalPreview }));
+    setSlideImageFile(files[0]);
+
+    setIsUploadingSlideImage(true);
+    try {
+      const authHeader = authService.getAuthHeader();
+      const storedHeaders = getAuthHeaders();
+      const activeToken =
+        authService.getCurrentUser()?.token ||
+        currentUser?.token ||
+        authHeader.Authorization ||
+        storedHeaders.Authorization;
+
+      const urls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        setSlideUploadProgressText(`Uploading picture ${i + 1} of ${files.length} to Cloudinary...`);
+        const uploadRes = await projectService.uploadImage(files[i], 'rasha_portfolio/hero', activeToken);
+        const secureUrl = uploadRes.secure_url || uploadRes.url;
+        if (secureUrl) {
+          urls.push(secureUrl);
+        }
+      }
+
+      if (urls.length > 0) {
+        setUploadedSlideImages((prev) => [...new Set([...prev.filter((u) => !u.startsWith('blob:')), ...urls])]);
+        // Automatically populate image URL with returned Cloudinary secure URL
+        setSlideForm((prev) => ({ ...prev, image: urls[0] }));
+        setSlideImageFile(null);
+        showSnackbar(
+          urls.length === 1
+            ? 'Hero slide image uploaded to Cloudinary successfully!'
+            : `${urls.length} pictures uploaded to Cloudinary! First image selected for this slide.`,
+          'success'
+        );
+      }
+    } catch (err: any) {
+      console.error('Error uploading pictures to Cloudinary:', err);
+      const msg =
+        err?.response?.status === 401
+          ? 'Authentication error: Sanctum session token missing or expired. Please re-login to upload images.'
+          : err?.response?.data?.message || err?.message || 'Error uploading pictures to Cloudinary.';
+      showSnackbar(msg, 'error');
+    } finally {
+      setIsUploadingSlideImage(false);
+      setSlideUploadProgressText('');
+    }
+  };
+
+  const handleSlideDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingSlidePhoto(true);
+  };
+
+  const handleSlideDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingSlidePhoto(false);
+  };
+
+  const handleSlideDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingSlidePhoto(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+      if (files.length === 1) {
+        handleUploadSlideFile(files[0]);
+      } else if (files.length > 1) {
+        handleUploadMultipleSlideFiles(files);
+      }
+    }
   };
 
   const handleSaveSlide = async (e: React.FormEvent) => {
@@ -717,11 +869,32 @@ export const Dashboard: React.FC = () => {
 
     setSaving(true);
     try {
+      let finalImageUrl = slideForm.image;
+
+      // If image is still a temporary local blob, upload it now with Sanctum authorization
+      if (finalImageUrl.startsWith('blob:') && slideImageFile) {
+        const authHeader = authService.getAuthHeader();
+        const storedHeaders = getAuthHeaders();
+        const activeToken =
+          authService.getCurrentUser()?.token ||
+          currentUser?.token ||
+          authHeader.Authorization ||
+          storedHeaders.Authorization;
+
+        const uploadRes = await projectService.uploadImage(slideImageFile, 'rasha_portfolio/hero', activeToken);
+        finalImageUrl = uploadRes.secure_url || uploadRes.url;
+      }
+
+      const payload = {
+        ...slideForm,
+        image: finalImageUrl,
+      };
+
       if (editingSlide) {
-        await homeCmsService.update(editingSlide.id, slideForm);
+        await homeCmsService.update(editingSlide.id, payload);
         showSnackbar('Home slide updated! Live hero presentation refreshed.', 'success');
       } else {
-        await homeCmsService.create(slideForm);
+        await homeCmsService.create(payload);
         showSnackbar('New slide added to Home showcase!', 'success');
       }
       setSlideDialogOpen(false);
@@ -3545,45 +3718,282 @@ export const Dashboard: React.FC = () => {
                 sx={modalInputSx}
               />
 
-              <TextField
-                label="Image Path / URL (e.g. /home-imgs/home1.webp or full URL) *"
-                fullWidth
-                value={slideForm.image}
-                onChange={(e) => setSlideForm({ ...slideForm, image: e.target.value })}
-                required
-                sx={modalInputSx}
-              />
-
-              {slideForm.image && (
-                <Box sx={{ mt: 1 }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 0.5 }}>
-                    Slide Live Preview:
-                  </Typography>
-                  <Box
-                    component="img"
-                    src={slideForm.image}
-                    alt={slideForm.title}
+              {/* Hero Slide Imagery Section with Direct Cloudinary Upload */}
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
+                  <Typography
+                    variant="subtitle2"
                     sx={{
-                      width: '100%',
-                      maxHeight: 220,
-                      borderRadius: 1.5,
-                      objectFit: 'cover',
-                      border: '1px solid rgba(212, 175, 55, 0.3)',
+                      color: 'primary.main',
+                      fontWeight: 700,
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      fontSize: '0.92rem',
                     }}
+                  >
+                    <CollectionsIcon sx={{ fontSize: '1.2rem' }} />
+                    Hero Slide Imagery
+                  </Typography>
+
+                  <Chip
+                    size="small"
+                    color={slideForm.image ? 'primary' : 'default'}
+                    variant="outlined"
+                    label={
+                      isUploadingSlideImage
+                        ? 'Uploading to Cloudinary...'
+                        : slideForm.image
+                        ? slideForm.image.includes('cloudinary.com')
+                          ? 'Cloudinary CDN Attached'
+                          : 'Image Attached'
+                        : 'No image selected'
+                    }
+                    sx={{ borderColor: 'rgba(212, 175, 55, 0.4)', fontSize: '0.75rem', fontWeight: 600 }}
                   />
                 </Box>
-              )}
+
+                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.72)', lineHeight: 1.6, display: 'block' }}>
+                  Upload a <strong>single picture</strong> or <strong>multiple pictures</strong> directly to Cloudinary, or enter an image URL / path manually. The image URL field below is automatically populated with the returned Cloudinary secure URL.
+                </Typography>
+
+                {/* Drag & Drop and Upload Action Area */}
+                <Box
+                  onDragOver={handleSlideDragOver}
+                  onDragLeave={handleSlideDragLeave}
+                  onDrop={handleSlideDrop}
+                  sx={{
+                    border: isDraggingSlidePhoto ? '2px dashed #D4AF37' : '1.5px dashed rgba(212, 175, 55, 0.45)',
+                    backgroundColor: isDraggingSlidePhoto ? 'rgba(212, 175, 55, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                    borderRadius: 2.5,
+                    p: { xs: 2.5, sm: 3 },
+                    textAlign: 'center',
+                    transition: 'all 0.25s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 1.8,
+                  }}
+                >
+                  <PhotoLibraryIcon sx={{ fontSize: '2.4rem', color: isDraggingSlidePhoto ? 'primary.light' : 'primary.main', opacity: 0.9 }} />
+
+                  <Box>
+                    <Typography variant="body2" sx={{ color: '#FFFFFF', fontWeight: 600, mb: 0.4 }}>
+                      Drag and drop hero slide picture here, or select an option below:
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.55)' }}>
+                      Supports high-resolution architectural photography (WEBP, JPG, PNG) — Uploads directly to Cloudinary CDN
+                    </Typography>
+                  </Box>
+
+                  {/* Upload Action Buttons */}
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, justifyContent: 'center', alignItems: 'center' }}>
+                    {/* Option 1: Upload Single Picture */}
+                    <Button
+                      variant="outlined"
+                      component="label"
+                      disabled={isUploadingSlideImage}
+                      startIcon={isUploadingSlideImage ? <CircularProgress size={16} color="inherit" /> : <CloudUploadIcon />}
+                      sx={{
+                        py: 0.9,
+                        px: 2,
+                        borderColor: 'rgba(212, 175, 55, 0.4)',
+                        color: 'primary.main',
+                        textTransform: 'none',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        '&:hover': {
+                          borderColor: 'primary.main',
+                          backgroundColor: 'rgba(212, 175, 55, 0.08)',
+                        },
+                      }}
+                    >
+                      {isUploadingSlideImage ? 'Uploading...' : 'Upload Single Picture'}
+                      <input
+                        type="file"
+                        hidden
+                        accept="image/*"
+                        disabled={isUploadingSlideImage}
+                        onChange={handleUploadSingleSlidePhoto}
+                      />
+                    </Button>
+
+                    {/* Option 2: Upload Multiple Pictures */}
+                    <Button
+                      variant="contained"
+                      component="label"
+                      disabled={isUploadingSlideImage}
+                      startIcon={isUploadingSlideImage ? <CircularProgress size={16} color="inherit" /> : <AddPhotoAlternateIcon />}
+                      sx={{
+                        py: 0.9,
+                        px: 2.2,
+                        backgroundColor: 'primary.main',
+                        color: '#000000',
+                        textTransform: 'none',
+                        fontSize: '0.85rem',
+                        fontWeight: 700,
+                        '&:hover': {
+                          backgroundColor: 'primary.light',
+                        },
+                      }}
+                    >
+                      Upload Multiple Pictures
+                      <input
+                        type="file"
+                        hidden
+                        multiple
+                        accept="image/*"
+                        disabled={isUploadingSlideImage}
+                        onChange={handleUploadMultipleSlidePhotos}
+                      />
+                    </Button>
+                  </Box>
+
+                  {isUploadingSlideImage && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, color: 'primary.main', pt: 0.5 }}>
+                      <CircularProgress size={16} color="inherit" />
+                      <Typography variant="caption" sx={{ color: 'primary.light', fontWeight: 600 }}>
+                        {slideUploadProgressText || 'Uploading image to Cloudinary...'}
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+
+                {/* Uploaded Gallery Picker (when multiple pictures were uploaded in this modal session) */}
+                {uploadedSlideImages.length > 1 && (
+                  <Box sx={{ p: 1.5, borderRadius: 2, backgroundColor: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(212, 175, 55, 0.2)' }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.85)', display: 'block', mb: 1, fontWeight: 600 }}>
+                      Uploaded Pictures from Computer ({uploadedSlideImages.length}) — Click to select which one to showcase:
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1.5, overflowX: 'auto', pb: 0.5 }}>
+                      {uploadedSlideImages.map((imgUrl, idx) => {
+                        const isSelected = slideForm.image === imgUrl;
+                        return (
+                          <Box
+                            key={idx}
+                            onClick={() => setSlideForm((prev) => ({ ...prev, image: imgUrl }))}
+                            sx={{
+                              position: 'relative',
+                              width: 86,
+                              height: 60,
+                              flexShrink: 0,
+                              borderRadius: 1.5,
+                              overflow: 'hidden',
+                              cursor: 'pointer',
+                              border: isSelected ? '2px solid #D4AF37' : '1px solid rgba(255, 255, 255, 0.2)',
+                              boxShadow: isSelected ? '0 0 10px rgba(212, 175, 55, 0.5)' : 'none',
+                              transition: 'all 0.2s',
+                              '&:hover': {
+                                borderColor: 'primary.main',
+                                transform: 'scale(1.04)',
+                              },
+                            }}
+                          >
+                            <Box
+                              component="img"
+                              src={imgUrl}
+                              alt={`Uploaded slide ${idx + 1}`}
+                              sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                            {isSelected && (
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  top: 3,
+                                  right: 3,
+                                  backgroundColor: 'primary.main',
+                                  color: '#000000',
+                                  borderRadius: '50%',
+                                  width: 18,
+                                  height: 18,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                                }}
+                              >
+                                <CheckIcon sx={{ fontSize: '0.8rem', fontWeight: 900 }} />
+                              </Box>
+                            )}
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  </Box>
+                )}
+
+                {/* Option 3: Manual Image Path / URL Input */}
+                <TextField
+                  label="Image Path / URL (e.g. /home-imgs/home1.webp or full URL) *"
+                  fullWidth
+                  value={slideForm.image}
+                  onChange={(e) => setSlideForm({ ...slideForm, image: e.target.value })}
+                  required
+                  sx={modalInputSx}
+                  helperText="Auto-filled with Cloudinary secure URL upon upload, or you can paste an image path/URL directly."
+                  slotProps={{
+                    input: {
+                      endAdornment: isUploadingSlideImage ? (
+                        <InputAdornment position="end">
+                          <CircularProgress size={18} color="primary" />
+                        </InputAdornment>
+                      ) : null,
+                    },
+                  }}
+                />
+
+                {/* Slide Live Preview */}
+                {slideForm.image && (
+                  <Box sx={{ mt: 0.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.8 }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                        Slide Live Preview:
+                      </Typography>
+                      {slideForm.image.includes('cloudinary.com') && (
+                        <Chip
+                          icon={<CheckCircleIcon sx={{ fontSize: '0.9rem !important' }} />}
+                          label="Hosted on Cloudinary CDN"
+                          size="small"
+                          sx={{
+                            height: 22,
+                            fontSize: '0.72rem',
+                            backgroundColor: 'rgba(76, 175, 80, 0.15)',
+                            color: '#81c784',
+                            borderColor: 'rgba(76, 175, 80, 0.35)',
+                            fontWeight: 600,
+                          }}
+                          variant="outlined"
+                        />
+                      )}
+                    </Box>
+                    <Box
+                      component="img"
+                      src={slideForm.image}
+                      alt={slideForm.title || 'Slide Preview'}
+                      sx={{
+                        width: '100%',
+                        maxHeight: 220,
+                        borderRadius: 1.5,
+                        objectFit: 'cover',
+                        border: '1px solid rgba(212, 175, 55, 0.3)',
+                      }}
+                    />
+                  </Box>
+                )}
+              </Box>
             </DialogContent>
 
             <DialogActions sx={{ p: 2.5, borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
-              <Button onClick={() => setSlideDialogOpen(false)} color="inherit" disabled={saving}>
+              <Button onClick={() => setSlideDialogOpen(false)} color="inherit" disabled={saving || isUploadingSlideImage}>
                 Cancel
               </Button>
               <Button
                 type="submit"
                 variant="contained"
                 color="primary"
-                disabled={saving}
+                disabled={saving || isUploadingSlideImage}
                 startIcon={saving && <CircularProgress size={16} color="inherit" />}
               >
                 {saving ? 'Saving...' : editingSlide ? 'Save Slide Updates' : 'Add to Hero Slider'}

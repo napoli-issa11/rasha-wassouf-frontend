@@ -1,20 +1,9 @@
 import axios from 'axios';
 import type { HomeSlide } from '../types/project';
 import { settingsService } from './settingsService';
-import { authService } from './authService';
+import { projectService, getAuthHeaders } from './projectService';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-
-const getAuthHeaders = () => {
-  const user = authService.getCurrentUser();
-  if (user?.token) {
-    return {
-      Authorization: `Bearer ${user.token}`,
-      Accept: 'application/json',
-    };
-  }
-  return { Accept: 'application/json' };
-};
 const SLIDES_STORAGE_KEY = 'rasha_home_slides_v2';
 const ROTATION_SPEED_KEY = 'rasha_hero_rotation_speed_v1';
 const DEFAULT_ROTATION_SPEED = 3;
@@ -228,5 +217,9 @@ export const homeCmsService = {
       // Local sync handled
     }
     return true;
+  },
+
+  async uploadImage(file: File, folder: string = 'rasha_portfolio/hero', customToken?: string): Promise<{ url: string; secure_url: string }> {
+    return projectService.uploadImage(file, folder, customToken);
   },
 };
